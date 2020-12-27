@@ -1,33 +1,34 @@
 import sys
 import binascii
 
-ptype = {0x0: 'NULL',
-         0x1: 'LOAD',
-         0x2: 'DYNAMIC',
-         0x3: 'INERP',
-         0x4: 'NOTE',
-         0x5: 'SHLIB',
-         0x6: 'PHDR',
-         0x7: 'TLS',
-         0x8: 'NUM',
-         0x60000000: 'LOOS',
-         0x6474e550: 'GNU_EH_FRAME',
-         0x6474e551: 'GNU_STACK',
-         0x6474e552: 'GNU_RELRO',
-         0x6ffffffa: 'LOSUNW',
-         0x6ffffffc: 'SUNWBSS',
-         0x6ffffffb: 'SUNWSTACK',
-         0x6fffffff: 'HISUNW ',
-         0x6ffffffe: 'HIOS',
-         0x70000000: 'LOPROC',
-         0x7fffffff: 'HIPROC',
-         # ARM Sections
-         0x70000001: 'ARM_EXIDX',
-         0x70000002: 'ARM_PREEMPTMAP',
-         0x70000003: 'ARM_ATTRIBUTES',
-         0x70000004: 'ARM_DEBUGOVERLAY',
-         0x70000005: 'ARM_OVERLAYSECTION'
-         }
+ptype = {
+    0x0: 'NULL',
+    0x1: 'LOAD',
+    0x2: 'DYNAMIC',
+    0x3: 'INERP',
+    0x4: 'NOTE',
+    0x5: 'SHLIB',
+    0x6: 'PHDR',
+    0x7: 'TLS',
+    0x8: 'NUM',
+    0x60000000: 'LOOS',
+    0x6474e550: 'GNU_EH_FRAME',
+    0x6474e551: 'GNU_STACK',
+    0x6474e552: 'GNU_RELRO',
+    0x6ffffffa: 'LOSUNW',
+    0x6ffffffc: 'SUNWBSS',
+    0x6ffffffb: 'SUNWSTACK',
+    0x6fffffff: 'HISUNW ',
+    0x6ffffffe: 'HIOS',
+    0x70000000: 'LOPROC',
+    0x7fffffff: 'HIPROC',
+    # ARM Sections
+    0x70000001: 'ARM_EXIDX',
+    0x70000002: 'ARM_PREEMPTMAP',
+    0x70000003: 'ARM_ATTRIBUTES',
+    0x70000004: 'ARM_DEBUGOVERLAY',
+    0x70000005: 'ARM_OVERLAYSECTION'
+}
 
 pflags = {
     0: 'N',
@@ -39,6 +40,9 @@ pflags = {
     6: 'RW_',
     7: 'RWE',
 }
+
+# 根据e_machine判断32/64
+emachine = {0x3: 4, 0x3e: 8}
 
 
 class elf_header(object):
@@ -73,9 +77,9 @@ class elf_header_e_ident(object):
         self.ei_nident_size = None
 
 
-class elf_p_table_element(object):
+class elf_64p_table_element(object):
     def __init__(self):
-        super(elf_p_table_element, self).__init__()
+        super(elf_64p_table_element, self).__init__()
         self.p_type = None
         self.p_flags = None
         self.p_offset = None
@@ -84,7 +88,19 @@ class elf_p_table_element(object):
         self.p_filesz = None
         self.p_memsz = None
         self.p_align = None
-        # char p_data[p_filesz]
+
+
+class elf_32p_table_element(object):
+    def __init__(self):
+        super(elf_32p_table_element, self).__init__()
+        self.p_type = None
+        self.p_offset = None
+        self.p_vaddr = None
+        self.p_paddr = None
+        self.p_filesz = None
+        self.p_memsz = None
+        self.p_flags = None
+        self.p_align = None
 
 
 class ELF():
@@ -125,19 +141,32 @@ class ELF():
             self.elf_header.e_type = self._get_int(16, 2)
             # print(hex(self.elf_header.e_type))
             self.elf_header.e_machine = self._get_int(18, 2)
+            # 根据e_machine判断是32还是64位
+            self.em = self.elf_header.e_machine
+
             # print(hex(self.elf_header.e_machine))
             self.elf_header.e_version = self._get_int(20, 4)
-            self.elf_header.e_entry = self._get_int(24, 8)
-            self.elf_header.e_phoff = self._get_int(32, 8)
+            self.elf_header.e_entry = self._get_int(
+                24, emachine[self.em])
+            self.elf_header.e_phoff = self._get_int(
+                24+emachine[self.em], emachine[self.em])
             # print(hex(self.elf_header.e_phoff))
-            self.elf_header.e_shoff = self._get_int(40, 8)
-            self.elf_header.e_flags = self._get_int(48, 4)
-            self.elf_header.e_ehsize = self._get_int(52, 2)
-            self.elf_header.e_phentsize = self._get_int(54, 2)
-            self.elf_header.e_phnum = self._get_int(56, 2)
-            self.elf_header.e_shentsize = self._get_int(58, 2)
-            self.elf_header.e_shnum = self._get_int(60, 2)
-            self.elf_header.e_shtrndx = self._get_int(62, 2)
+            self.elf_header.e_shoff = self._get_int(
+                24+2*emachine[self.em], emachine[self.em])
+            self.elf_header.e_flags = self._get_int(
+                24+3*emachine[self.em], 4)
+            self.elf_header.e_ehsize = self._get_int(
+                24+3*emachine[self.em]+4, 2)
+            self.elf_header.e_phentsize = self._get_int(
+                24+3*emachine[self.em]+4+2, 2)
+            self.elf_header.e_phnum = self._get_int(
+                24+3*emachine[self.em]+4+2+2, 2)
+            self.elf_header.e_shentsize = self._get_int(
+                24+3*emachine[self.em]+4+2+2+2, 2)
+            self.elf_header.e_shnum = self._get_int(
+                24+3*emachine[self.em]+4+2+2+2+2, 2)
+            self.elf_header.e_shtrndx = self._get_int(
+                24+3*emachine[self.em]+4+2+2+2+2+2, 2)
 
     def _get_int(self, seek, num):
         self.f.seek(seek, 0)
@@ -153,23 +182,42 @@ class ELF():
         with open(self.filepath, "rb") as f:
             self.f = f
             self.f.seek(offset, 0)
-            p_element = elf_p_table_element()
-            p_element.p_type = int.from_bytes(
-                self.f.read(4), 'little')
-            p_element.p_flags = int.from_bytes(
-                self.f.read(4), 'little')
-            p_element.p_offset = int.from_bytes(
-                self.f.read(8), 'little')
-            p_element.p_vaddr = int.from_bytes(
-                self.f.read(8), 'little')
-            p_element.p_paddr = int.from_bytes(
-                self.f.read(8), 'little')
-            p_element.p_filesz = int.from_bytes(
-                self.f.read(8), 'little')
-            p_element.p_memsz = int.from_bytes(
-                self.f.read(8), 'little')
-            p_element.p_align = int.from_bytes(
-                self.f.read(8), 'little')
+            if self.em == 0x3e:
+                p_element = elf_64p_table_element()
+                p_element.p_type = int.from_bytes(
+                    self.f.read(4), 'little')
+                p_element.p_flags = int.from_bytes(
+                    self.f.read(4), 'little')
+                p_element.p_offset = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_vaddr = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_paddr = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_filesz = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_memsz = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_align = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+            elif self.em == 0x3:
+                p_element = elf_32p_table_element()
+                p_element.p_type = int.from_bytes(
+                    self.f.read(4), 'little')
+                p_element.p_offset = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_vaddr = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_paddr = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_filesz = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_memsz = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
+                p_element.p_flags = int.from_bytes(
+                    self.f.read(4), 'little')
+                p_element.p_align = int.from_bytes(
+                    self.f.read(emachine[self.em]), 'little')
             return p_element
 
     def display_ele_type_flags(self):
@@ -183,7 +231,7 @@ class ELF():
 
 if __name__ == "__main__":
     try:
-        elf = ELF('1.so')
+        elf = ELF('32.so')
         elf.init_elf_header()
         elf.display_ele_type_flags()
     except Exception as e:
